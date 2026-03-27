@@ -1,0 +1,693 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>极简拟合绘图</title>
+  <style>
+    :root {
+      --bg: #f2f5f1;
+      --card: #ffffff;
+      --ink: #1b2a1f;
+      --muted: #5d6d62;
+      --line: #c8d2c9;
+      --accent: #276749;
+      --accent-2: #b35c2e;
+      --axis: #1f2937;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "LXGW WenKai", "Noto Serif SC", "Microsoft YaHei UI", serif;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 20% 15%, #dfead9 0%, transparent 32%),
+        radial-gradient(circle at 80% 85%, #f6dccf 0%, transparent 30%),
+        linear-gradient(135deg, #edf3ea, #f8faf7);
+      padding: 16px;
+    }
+
+    .wrap {
+      max-width: 1180px;
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: 320px 1fr;
+      gap: 14px;
+    }
+
+    .card {
+      background: color-mix(in srgb, var(--card) 90%, transparent);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      backdrop-filter: blur(4px);
+      box-shadow: 0 10px 24px rgba(19, 36, 22, 0.08);
+    }
+
+    .panel {
+      padding: 12px;
+      display: grid;
+      gap: 8px;
+      align-content: start;
+    }
+
+    textarea {
+      width: 100%;
+      min-height: 440px;
+      resize: vertical;
+      border-radius: 10px;
+      border: 1px solid var(--line);
+      background: #f9fcf8;
+      color: #223027;
+      padding: 10px;
+      font: 13px/1.5 "Consolas", "Cascadia Mono", monospace;
+      outline: none;
+    }
+
+    textarea:focus {
+      border-color: #7ba58b;
+      box-shadow: 0 0 0 3px rgba(70, 120, 82, 0.14);
+    }
+
+    .row {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    button {
+      border: none;
+      border-radius: 9px;
+      padding: 9px 12px;
+      background: var(--accent);
+      color: #f4fff7;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    button.alt {
+      background: var(--accent-2);
+    }
+
+    .hint {
+      font-size: 12px;
+      color: var(--muted);
+      line-height: 1.4;
+    }
+
+    .view {
+      padding: 12px;
+      display: grid;
+      grid-template-rows: auto 1fr;
+      gap: 8px;
+      min-height: 560px;
+    }
+
+    .manual {
+      grid-column: 1 / -1;
+      padding: 14px;
+      line-height: 1.6;
+      color: #25362b;
+    }
+
+    .manual h2 {
+      margin: 0 0 8px;
+      font-size: 18px;
+    }
+
+    .manual pre {
+      margin: 8px 0;
+      padding: 10px;
+      border-radius: 10px;
+      border: 1px solid var(--line);
+      background: #f8fbf7;
+      overflow-x: auto;
+      font: 13px/1.5 "Consolas", "Cascadia Mono", monospace;
+      color: #223027;
+    }
+
+    .manual ul {
+      margin: 8px 0;
+      padding-left: 20px;
+    }
+
+    .status {
+      font-size: 13px;
+      color: #2f4936;
+      background: #f7fbf7;
+      border: 1px dashed #b7cabd;
+      border-radius: 8px;
+      padding: 7px 10px;
+      min-height: 34px;
+    }
+
+    .canvas-box {
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      overflow: hidden;
+      background: #ffffff;
+      position: relative;
+      min-height: 460px;
+    }
+
+    canvas {
+      width: 100%;
+      height: 100%;
+      display: block;
+      touch-action: none;
+      cursor: grab;
+    }
+
+    canvas.dragging {
+      cursor: grabbing;
+    }
+
+    @media (max-width: 900px) {
+      .wrap {
+        grid-template-columns: 1fr;
+      }
+
+      textarea {
+        min-height: 260px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <section class="card panel">
+      <strong>数据输入</strong>
+      <textarea id="input" spellcheck="false">x -2 -1 0 1 2 3
+y -1 0.2 1.1 2.2 2.9 4.1
+xparse $ * 1
+yparse $ * 1
+xname 时间 t
+yname 位移 s</textarea>
+      <div class="row">
+        <button id="drawBtn">生成图</button>
+        <button id="downloadBtn">下载图片</button>
+        <button id="resetBtn" class="alt">重置视图</button>
+      </div>
+      <div class="hint">
+        行格式：<br>
+        x / y 后面接空格分隔数值；xparse / yparse 使用变量 $；xname / yname 为轴标题；
+        bgcolor / linecolor / pointcolor 可设置颜色。<br>
+        鼠标拖动平移，滚轮缩放坐标系。
+      </div>
+    </section>
+
+    <section class="card view">
+      <div id="status" class="status">等待绘图...</div>
+      <div class="canvas-box">
+        <canvas id="chart"></canvas>
+      </div>
+    </section>
+
+    <section class="card manual">
+      <h2>完整使用教程</h2>
+      <div>
+        在左侧输入框中每行写一条命令，点击“生成图”即可在右侧绘制散点和线性拟合线。
+      </div>
+      <ul>
+        <li><strong>x</strong>: x 轴数据，后面跟空格分隔数字。</li>
+        <li><strong>y</strong>: y 轴数据，后面跟空格分隔数字。</li>
+        <li><strong>xparse</strong>: x 数据变换表达式，使用变量 <strong>$</strong> 代表当前值。例如 <strong>xparse $ * 2 + 1</strong>。</li>
+        <li><strong>yparse</strong>: y 数据变换表达式，使用变量 <strong>$</strong>。</li>
+        <li><strong>xname</strong>: x 轴标题文字。</li>
+        <li><strong>yname</strong>: y 轴标题文字。</li>
+        <li><strong>bgcolor</strong>: 图表背景色，支持 CSS 颜色格式，例如 <strong>#fdfaf2</strong>、<strong>rgb(240,248,255)</strong>、<strong>lightyellow</strong>。</li>
+        <li><strong>linecolor</strong>: 拟合线颜色，支持 CSS 颜色格式。</li>
+        <li><strong>pointcolor</strong>: 散点颜色，支持 CSS 颜色格式。</li>
+      </ul>
+      <div>示例输入：</div>
+      <pre>x -2 -1 0 1 2 3
+y -1 0.2 1.1 2.2 2.9 4.1
+xparse $ * 1
+yparse $ * 1
+xname 时间 t
+yname 位移 s
+bgcolor #fffdf6
+linecolor #d97706
+pointcolor #0f766e</pre>
+      <ul>
+        <li>若 x 和 y 数量不一致，系统会自动按较短长度配对并提示忽略数量。</li>
+        <li>“重置视图”会恢复默认缩放和平移。</li>
+        <li>“下载图片”会导出当前画布为 PNG 图片。</li>
+      </ul>
+    </section>
+  </main>
+
+  <script>
+    const inputEl = document.getElementById('input');
+    const drawBtn = document.getElementById('drawBtn');
+    const downloadBtn = document.getElementById('downloadBtn');
+    const resetBtn = document.getElementById('resetBtn');
+    const statusEl = document.getElementById('status');
+    const canvas = document.getElementById('chart');
+    const ctx = canvas.getContext('2d');
+
+    const state = {
+      points: [],
+      xName: 'x',
+      yName: 'y',
+      fit: null,
+      bgColor: '#ffffff',
+      lineColor: '#b35c2e',
+      pointColor: '#276749',
+      scale: 42,
+      panX: 0,
+      panY: 0
+    };
+
+    const drag = {
+      active: false,
+      startX: 0,
+      startY: 0,
+      basePanX: 0,
+      basePanY: 0
+    };
+
+    function resizeCanvas() {
+      const dpr = Math.max(1, window.devicePixelRatio || 1);
+      const rect = canvas.getBoundingClientRect();
+      canvas.width = Math.max(1, Math.round(rect.width * dpr));
+      canvas.height = Math.max(1, Math.round(rect.height * dpr));
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      render();
+    }
+
+    function parseList(text) {
+      return text.trim().split(/\s+/).filter(Boolean).map(Number).filter((v) => Number.isFinite(v));
+    }
+
+    function applyParser(values, code) {
+      if (!code) return values.slice();
+      const result = [];
+      for (const v of values) {
+        const $ = v;
+        let transformed;
+        try {
+          transformed = eval(code);
+        } catch (err) {
+          throw new Error('解析表达式执行失败: ' + err.message);
+        }
+        const n = Number(transformed);
+        if (!Number.isFinite(n)) {
+          throw new Error('解析表达式返回了非数字结果');
+        }
+        result.push(n);
+      }
+      return result;
+    }
+
+    function parseInput(raw) {
+      const lines = raw.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+      const cfg = {
+        x: [],
+        y: [],
+        xparse: '',
+        yparse: '',
+        xname: 'x',
+        yname: 'y',
+        bgcolor: '#ffffff',
+        linecolor: '#b35c2e',
+        pointcolor: '#276749'
+      };
+
+      for (const line of lines) {
+        const m = line.match(/^(\S+)\s*(.*)$/);
+        if (!m) continue;
+        const key = m[1].toLowerCase();
+        const val = m[2] || '';
+        if (!(key in cfg)) continue;
+        if (key === 'x' || key === 'y') {
+          cfg[key] = parseList(val);
+        } else {
+          cfg[key] = val;
+        }
+      }
+
+      const xVals = applyParser(cfg.x, cfg.xparse);
+      const yVals = applyParser(cfg.y, cfg.yparse);
+
+      if (!isValidCssColor(cfg.bgcolor)) {
+        throw new Error('bgcolor 不是有效的 CSS 颜色');
+      }
+      if (!isValidCssColor(cfg.linecolor)) {
+        throw new Error('linecolor 不是有效的 CSS 颜色');
+      }
+      if (!isValidCssColor(cfg.pointcolor)) {
+        throw new Error('pointcolor 不是有效的 CSS 颜色');
+      }
+
+      const n = Math.min(xVals.length, yVals.length);
+      const points = [];
+      for (let i = 0; i < n; i += 1) {
+        points.push({ x: xVals[i], y: yVals[i] });
+      }
+      return {
+        points,
+        xName: cfg.xname || 'x',
+        yName: cfg.yname || 'y',
+        bgColor: cfg.bgcolor,
+        lineColor: cfg.linecolor,
+        pointColor: cfg.pointcolor,
+        dropped: Math.abs(xVals.length - yVals.length)
+      };
+    }
+
+    function isValidCssColor(value) {
+      const sample = new Option().style;
+      sample.color = '';
+      sample.color = String(value || '').trim();
+      return sample.color !== '';
+    }
+
+    function fitLine(points) {
+      const n = points.length;
+      if (n < 2) return null;
+      let sx = 0;
+      let sy = 0;
+      let sxx = 0;
+      let sxy = 0;
+      for (const p of points) {
+        sx += p.x;
+        sy += p.y;
+        sxx += p.x * p.x;
+        sxy += p.x * p.y;
+      }
+      const denom = n * sxx - sx * sx;
+      if (Math.abs(denom) < 1e-12) return null;
+      const k = (n * sxy - sx * sy) / denom;
+      const b = (sy - k * sx) / n;
+      return { k, b };
+    }
+
+    function toScreenX(x, width) {
+      return width / 2 + state.panX + x * state.scale;
+    }
+
+    function toScreenY(y, height) {
+      return height / 2 + state.panY - y * state.scale;
+    }
+
+    function screenToWorld(x, y, width, height) {
+      return {
+        x: (x - width / 2 - state.panX) / state.scale,
+        y: -(y - height / 2 - state.panY) / state.scale
+      };
+    }
+
+    function fmt(v) {
+      if (!Number.isFinite(v)) return String(v);
+      const abs = Math.abs(v);
+      if (abs >= 1000 || (abs > 0 && abs < 0.001)) return v.toExponential(2);
+      return Number(v.toFixed(3)).toString();
+    }
+
+    function clamp(v, min, max) {
+      return Math.min(max, Math.max(min, v));
+    }
+
+    function niceStep(worldStep) {
+      if (!Number.isFinite(worldStep) || worldStep <= 0) return 1;
+      const exp = Math.floor(Math.log10(worldStep));
+      const base = 10 ** exp;
+      const frac = worldStep / base;
+      let niceFrac = 1;
+      if (frac <= 1) niceFrac = 1;
+      else if (frac <= 2) niceFrac = 2;
+      else if (frac <= 5) niceFrac = 5;
+      else niceFrac = 10;
+      return niceFrac * base;
+    }
+
+    function drawAxes(width, height) {
+      const axisColor = '#1f2937';
+      const gxColor = '#dce4db';
+      const tickColor = '#344154';
+      const targetTickPx = 80;
+      const majorUnit = niceStep(targetTickPx / state.scale);
+
+      ctx.strokeStyle = gxColor;
+      ctx.lineWidth = 1;
+      const leftWorld = screenToWorld(0, 0, width, height).x;
+      const rightWorld = screenToWorld(width, 0, width, height).x;
+      const topWorld = screenToWorld(0, 0, width, height).y;
+      const bottomWorld = screenToWorld(0, height, width, height).y;
+
+      const startXWorld = Math.ceil(leftWorld / majorUnit) * majorUnit;
+      const startYWorld = Math.ceil(bottomWorld / majorUnit) * majorUnit;
+
+      for (let i = 0; i < 2000; i += 1) {
+        const wx = startXWorld + i * majorUnit;
+        if (wx > rightWorld + 1e-9) break;
+        const x = toScreenX(wx, width);
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, height);
+        ctx.stroke();
+      }
+
+      for (let i = 0; i < 2000; i += 1) {
+        const wy = startYWorld + i * majorUnit;
+        if (wy > topWorld + 1e-9) break;
+        const y = toScreenY(wy, height);
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(width, y);
+        ctx.stroke();
+      }
+
+      const ox = toScreenX(0, width);
+      const oy = toScreenY(0, height);
+
+      ctx.strokeStyle = axisColor;
+      ctx.lineWidth = 1.8;
+      ctx.beginPath();
+      ctx.moveTo(0, oy);
+      ctx.lineTo(width, oy);
+      ctx.moveTo(ox, 0);
+      ctx.lineTo(ox, height);
+      ctx.stroke();
+
+      const labelY = clamp(oy + 18, 14, height - 6);
+      const labelX = clamp(ox + 8, 6, width - 64);
+
+      ctx.strokeStyle = tickColor;
+      ctx.fillStyle = tickColor;
+      ctx.lineWidth = 1;
+      ctx.font = '12px "Consolas", "Cascadia Mono", monospace';
+
+      for (let i = 0; i < 2000; i += 1) {
+        const wx = startXWorld + i * majorUnit;
+        if (wx > rightWorld + 1e-9) break;
+        const x = toScreenX(wx, width);
+        ctx.beginPath();
+        ctx.moveTo(x, oy - 4);
+        ctx.lineTo(x, oy + 4);
+        ctx.stroke();
+        if (Math.abs(wx) > 1e-10) {
+          const txt = fmt(wx);
+          ctx.fillText(txt, x + 3, labelY);
+        }
+      }
+
+      for (let i = 0; i < 2000; i += 1) {
+        const wy = startYWorld + i * majorUnit;
+        if (wy > topWorld + 1e-9) break;
+        const y = toScreenY(wy, height);
+        ctx.beginPath();
+        ctx.moveTo(ox - 4, y);
+        ctx.lineTo(ox + 4, y);
+        ctx.stroke();
+        if (Math.abs(wy) > 1e-10) {
+          const txt = fmt(wy);
+          ctx.fillText(txt, labelX, y - 4);
+        }
+      }
+
+      ctx.fillStyle = axisColor;
+      ctx.font = '600 14px "Noto Serif SC", "Microsoft YaHei UI", serif';
+      ctx.fillText(state.xName, width - 84, Math.max(18, oy - 10));
+      ctx.fillText(state.yName, Math.min(width - 80, ox + 10), 20);
+    }
+
+    function drawPoints(width, height) {
+      ctx.fillStyle = state.pointColor;
+      ctx.strokeStyle = state.pointColor;
+      ctx.lineWidth = 1.2;
+      ctx.font = '12px "Consolas", "Cascadia Mono", monospace';
+
+      for (const p of state.points) {
+        const x = toScreenX(p.x, width);
+        const y = toScreenY(p.y, height);
+        ctx.beginPath();
+        ctx.arc(x, y, 4, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        const txt = `(${fmt(p.x)}, ${fmt(p.y)})`;
+        ctx.fillStyle = '#25362b';
+        ctx.fillText(txt, x + 6, y - 8);
+        ctx.fillStyle = state.pointColor;
+      }
+    }
+
+    function drawFitLine(width, height) {
+      if (!state.fit) return;
+      const { k, b } = state.fit;
+      const left = screenToWorld(0, height / 2, width, height).x;
+      const right = screenToWorld(width, height / 2, width, height).x;
+      const y1 = k * left + b;
+      const y2 = k * right + b;
+
+      ctx.strokeStyle = state.lineColor;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(toScreenX(left, width), toScreenY(y1, height));
+      ctx.lineTo(toScreenX(right, width), toScreenY(y2, height));
+      ctx.stroke();
+
+      const eq = `y = ${fmt(k)}x ${b >= 0 ? '+' : '-'} ${fmt(Math.abs(b))}`;
+      ctx.font = '600 13px "Consolas", "Cascadia Mono", monospace';
+      const xOnLine = left + (right - left) * 0.72;
+      const yOnLine = k * xOnLine + b;
+      const sx = toScreenX(xOnLine, width);
+      const sy = toScreenY(yOnLine, height);
+      const textW = ctx.measureText(eq).width;
+      const tx = clamp(sx + 10, 8, width - textW - 8);
+      const ty = clamp(sy - 10, 16, height - 10);
+
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.92)';
+      ctx.fillRect(tx - 4, ty - 12, textW + 8, 16);
+      ctx.fillStyle = state.lineColor;
+      ctx.fillText(eq, tx, ty);
+    }
+
+    function render() {
+      const rect = canvas.getBoundingClientRect();
+      const width = Math.max(1, rect.width);
+      const height = Math.max(1, rect.height);
+      ctx.clearRect(0, 0, width, height);
+      ctx.fillStyle = state.bgColor;
+      ctx.fillRect(0, 0, width, height);
+      drawAxes(width, height);
+      drawFitLine(width, height);
+      drawPoints(width, height);
+    }
+
+    function updateStatus(dropped = 0) {
+      const eq = state.fit
+        ? `拟合方程: y = ${fmt(state.fit.k)}x ${state.fit.b >= 0 ? '+' : '-'} ${fmt(Math.abs(state.fit.b))}`
+        : '拟合方程: 点数不足或 x 全相同，无法拟合';
+      const dropMsg = dropped > 0 ? `；已忽略 ${dropped} 个不成对数据` : '';
+      statusEl.textContent = `数据点: ${state.points.length}${dropMsg}；${eq}`;
+    }
+
+    function drawFromInput() {
+      try {
+        const parsed = parseInput(inputEl.value);
+        state.points = parsed.points;
+        state.xName = parsed.xName;
+        state.yName = parsed.yName;
+        state.bgColor = parsed.bgColor;
+        state.lineColor = parsed.lineColor;
+        state.pointColor = parsed.pointColor;
+        state.fit = fitLine(parsed.points);
+        updateStatus(parsed.dropped);
+        render();
+      } catch (err) {
+        statusEl.textContent = '输入解析错误: ' + err.message;
+      }
+    }
+
+    drawBtn.addEventListener('click', drawFromInput);
+
+    downloadBtn.addEventListener('click', () => {
+      const link = document.createElement('a');
+      const t = new Date();
+      const pad = (v) => String(v).padStart(2, '0');
+      const name = `chart-${t.getFullYear()}${pad(t.getMonth() + 1)}${pad(t.getDate())}-${pad(t.getHours())}${pad(t.getMinutes())}${pad(t.getSeconds())}.png`;
+      link.download = name;
+      link.href = canvas.toDataURL('image/png');
+      link.click();
+    });
+
+    resetBtn.addEventListener('click', () => {
+      state.scale = 42;
+      state.panX = 0;
+      state.panY = 0;
+      render();
+    });
+
+    canvas.addEventListener('pointerdown', (e) => {
+      drag.active = true;
+      drag.startX = e.clientX;
+      drag.startY = e.clientY;
+      drag.basePanX = state.panX;
+      drag.basePanY = state.panY;
+      canvas.classList.add('dragging');
+      canvas.setPointerCapture(e.pointerId);
+    });
+
+    canvas.addEventListener('pointermove', (e) => {
+      if (!drag.active) return;
+      state.panX = drag.basePanX + (e.clientX - drag.startX);
+      state.panY = drag.basePanY + (e.clientY - drag.startY);
+      render();
+    });
+
+    const stopDrag = (e) => {
+      drag.active = false;
+      canvas.classList.remove('dragging');
+      if (e && canvas.hasPointerCapture(e.pointerId)) {
+        canvas.releasePointerCapture(e.pointerId);
+      }
+    };
+
+    canvas.addEventListener('pointerup', stopDrag);
+    canvas.addEventListener('pointercancel', stopDrag);
+    canvas.addEventListener('lostpointercapture', () => {
+      drag.active = false;
+      canvas.classList.remove('dragging');
+    });
+
+    canvas.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      const rect = canvas.getBoundingClientRect();
+      const mx = e.clientX - rect.left;
+      const my = e.clientY - rect.top;
+      const before = screenToWorld(mx, my, rect.width, rect.height);
+
+      const factor = e.deltaY < 0 ? 1.1 : 0.9;
+      state.scale = Math.min(400, Math.max(8, state.scale * factor));
+
+      const sx = rect.width / 2 + state.panX + before.x * state.scale;
+      const sy = rect.height / 2 + state.panY - before.y * state.scale;
+      state.panX += mx - sx;
+      state.panY += my - sy;
+      render();
+    }, { passive: false });
+
+    window.addEventListener('resize', resizeCanvas);
+
+    window.__chartDebug = {
+      getState: () => ({
+        scale: state.scale,
+        panX: state.panX,
+        panY: state.panY,
+        pointCount: state.points.length,
+        fit: state.fit,
+        status: statusEl.textContent
+      }),
+      drawFromInput
+    };
+
+    resizeCanvas();
+    drawFromInput();
+  </script>
+</body>
+</html>
