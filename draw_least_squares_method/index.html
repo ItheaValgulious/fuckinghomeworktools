@@ -663,7 +663,7 @@ pointcolor #0f766e</pre>
       const before = screenToWorld(mx, my, rect.width, rect.height);
 
       const factor = e.deltaY < 0 ? 1.1 : 0.9;
-      state.scale = Math.min(400, Math.max(8, state.scale * factor));
+      state.scale = Math.max(8, state.scale * factor);
 
       const sx = rect.width / 2 + state.panX + before.x * state.scale;
       const sy = rect.height / 2 + state.panY - before.y * state.scale;
