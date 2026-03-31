@@ -98,6 +98,42 @@
       line-height: 1.4;
     }
 
+    .zoom-controls {
+      display: grid;
+      gap: 6px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 8px;
+      background: #f8fbf7;
+    }
+
+    .zoom-row {
+      display: grid;
+      grid-template-columns: 26px 74px 1fr 74px;
+      gap: 6px;
+      align-items: center;
+    }
+
+    .zoom-row label {
+      font-size: 12px;
+      color: #2a3d2f;
+      font-weight: 600;
+    }
+
+    .zoom-row input[type="number"] {
+      width: 100%;
+      border-radius: 8px;
+      border: 1px solid var(--line);
+      background: #ffffff;
+      color: #223027;
+      padding: 4px 6px;
+      font: 12px/1.3 "Consolas", "Cascadia Mono", monospace;
+    }
+
+    .zoom-row input[type="range"] {
+      width: 100%;
+    }
+
     .view {
       padding: 12px;
       display: grid;
@@ -191,11 +227,25 @@ yname 位移 s</textarea>
         <button id="downloadBtn">下载图片</button>
         <button id="resetBtn" class="alt">重置视图</button>
       </div>
+      <div class="zoom-controls">
+        <div class="zoom-row">
+          <label for="xScaleSlider">X</label>
+          <input id="xScaleMin" type="number" step="0.1" value="8">
+          <input id="xScaleSlider" type="range" min="8" max="400" step="0.1" value="42">
+          <input id="xScaleMax" type="number" step="0.1" value="400">
+        </div>
+        <div class="zoom-row">
+          <label for="yScaleSlider">Y</label>
+          <input id="yScaleMin" type="number" step="0.1" value="8">
+          <input id="yScaleSlider" type="range" min="8" max="400" step="0.1" value="42">
+          <input id="yScaleMax" type="number" step="0.1" value="400">
+        </div>
+      </div>
       <div class="hint">
         行格式：<br>
         x / y 后面接空格分隔数值；xparse / yparse 使用变量 $；xname / yname 为轴标题；
         bgcolor / linecolor / pointcolor 可设置颜色。<br>
-        鼠标拖动平移，滚轮缩放坐标系。
+        鼠标拖动平移，滚轮缩放坐标系；可用 X/Y 滑块分别缩放。
       </div>
     </section>
 
@@ -248,6 +298,12 @@ pointcolor #0f766e</pre>
     const statusEl = document.getElementById('status');
     const canvas = document.getElementById('chart');
     const ctx = canvas.getContext('2d');
+    const xScaleMinEl = document.getElementById('xScaleMin');
+    const xScaleSliderEl = document.getElementById('xScaleSlider');
+    const xScaleMaxEl = document.getElementById('xScaleMax');
+    const yScaleMinEl = document.getElementById('yScaleMin');
+    const yScaleSliderEl = document.getElementById('yScaleSlider');
+    const yScaleMaxEl = document.getElementById('yScaleMax');
 
     const state = {
       points: [],
@@ -257,7 +313,10 @@ pointcolor #0f766e</pre>
       bgColor: '#ffffff',
       lineColor: '#b35c2e',
       pointColor: '#276749',
-      scale: 42,
+      scaleX: 42,
+      scaleY: 42,
+      xScaleRange: { min: 8, max: 400 },
+      yScaleRange: { min: 8, max: 400 },
       panX: 0,
       panY: 0
     };
@@ -387,17 +446,17 @@ pointcolor #0f766e</pre>
     }
 
     function toScreenX(x, width) {
-      return width / 2 + state.panX + x * state.scale;
+      return width / 2 + state.panX + x * state.scaleX;
     }
 
     function toScreenY(y, height) {
-      return height / 2 + state.panY - y * state.scale;
+      return height / 2 + state.panY - y * state.scaleY;
     }
 
     function screenToWorld(x, y, width, height) {
       return {
-        x: (x - width / 2 - state.panX) / state.scale,
-        y: -(y - height / 2 - state.panY) / state.scale
+        x: (x - width / 2 - state.panX) / state.scaleX,
+        y: -(y - height / 2 - state.panY) / state.scaleY
       };
     }
 
@@ -430,7 +489,8 @@ pointcolor #0f766e</pre>
       const gxColor = '#dce4db';
       const tickColor = '#344154';
       const targetTickPx = 80;
-      const majorUnit = niceStep(targetTickPx / state.scale);
+      const majorUnitX = niceStep(targetTickPx / state.scaleX);
+      const majorUnitY = niceStep(targetTickPx / state.scaleY);
 
       ctx.strokeStyle = gxColor;
       ctx.lineWidth = 1;
@@ -439,11 +499,11 @@ pointcolor #0f766e</pre>
       const topWorld = screenToWorld(0, 0, width, height).y;
       const bottomWorld = screenToWorld(0, height, width, height).y;
 
-      const startXWorld = Math.ceil(leftWorld / majorUnit) * majorUnit;
-      const startYWorld = Math.ceil(bottomWorld / majorUnit) * majorUnit;
+      const startXWorld = Math.ceil(leftWorld / majorUnitX) * majorUnitX;
+      const startYWorld = Math.ceil(bottomWorld / majorUnitY) * majorUnitY;
 
       for (let i = 0; i < 2000; i += 1) {
-        const wx = startXWorld + i * majorUnit;
+        const wx = startXWorld + i * majorUnitX;
         if (wx > rightWorld + 1e-9) break;
         const x = toScreenX(wx, width);
         ctx.beginPath();
@@ -453,7 +513,7 @@ pointcolor #0f766e</pre>
       }
 
       for (let i = 0; i < 2000; i += 1) {
-        const wy = startYWorld + i * majorUnit;
+        const wy = startYWorld + i * majorUnitY;
         if (wy > topWorld + 1e-9) break;
         const y = toScreenY(wy, height);
         ctx.beginPath();
@@ -483,7 +543,7 @@ pointcolor #0f766e</pre>
       ctx.font = '12px "Consolas", "Cascadia Mono", monospace';
 
       for (let i = 0; i < 2000; i += 1) {
-        const wx = startXWorld + i * majorUnit;
+        const wx = startXWorld + i * majorUnitX;
         if (wx > rightWorld + 1e-9) break;
         const x = toScreenX(wx, width);
         ctx.beginPath();
@@ -497,7 +557,7 @@ pointcolor #0f766e</pre>
       }
 
       for (let i = 0; i < 2000; i += 1) {
-        const wy = startYWorld + i * majorUnit;
+        const wy = startYWorld + i * majorUnitY;
         if (wy > topWorld + 1e-9) break;
         const y = toScreenY(wy, height);
         ctx.beginPath();
@@ -512,8 +572,69 @@ pointcolor #0f766e</pre>
 
       ctx.fillStyle = axisColor;
       ctx.font = '600 14px "Noto Serif SC", "Microsoft YaHei UI", serif';
-      ctx.fillText(state.xName, width - 84, Math.max(18, oy - 10));
-      ctx.fillText(state.yName, Math.min(width - 80, ox + 10), 20);
+      const xNameW = ctx.measureText(state.xName).width;
+      const yNameW = ctx.measureText(state.yName).width;
+
+      let xNameX = width - xNameW - 8;
+      let xNameY = Math.max(18, oy - 10);
+      if (oy < 0) xNameY = 18;
+      else if (oy > height) xNameY = height - 8;
+      xNameX = clamp(xNameX, 6, width - xNameW - 6);
+      xNameY = clamp(xNameY, 14, height - 6);
+
+      let yNameX = Math.min(width - yNameW - 6, ox + 10);
+      let yNameY = 20;
+      if (ox < 0) yNameX = 8;
+      else if (ox > width) yNameX = width - yNameW - 8;
+      yNameX = clamp(yNameX, 6, width - yNameW - 6);
+      yNameY = clamp(yNameY, 14, height - 6);
+
+      ctx.fillText(state.xName, xNameX, xNameY);
+      ctx.fillText(state.yName, yNameX, yNameY);
+    }
+
+    function syncScaleControls() {
+      const xMin = state.xScaleRange.min;
+      const xMax = state.xScaleRange.max;
+      const yMin = state.yScaleRange.min;
+      const yMax = state.yScaleRange.max;
+
+      xScaleMinEl.value = String(Number(xMin.toFixed(4)));
+      xScaleMaxEl.value = String(Number(xMax.toFixed(4)));
+      yScaleMinEl.value = String(Number(yMin.toFixed(4)));
+      yScaleMaxEl.value = String(Number(yMax.toFixed(4)));
+
+      xScaleSliderEl.min = String(xMin);
+      xScaleSliderEl.max = String(xMax);
+      yScaleSliderEl.min = String(yMin);
+      yScaleSliderEl.max = String(yMax);
+
+      state.scaleX = clamp(state.scaleX, xMin, xMax);
+      state.scaleY = clamp(state.scaleY, yMin, yMax);
+      xScaleSliderEl.value = String(state.scaleX);
+      yScaleSliderEl.value = String(state.scaleY);
+    }
+
+    function applyScaleRange(axis) {
+      const minEl = axis === 'x' ? xScaleMinEl : yScaleMinEl;
+      const maxEl = axis === 'x' ? xScaleMaxEl : yScaleMaxEl;
+      const range = axis === 'x' ? state.xScaleRange : state.yScaleRange;
+
+      let nextMin = Number(minEl.value);
+      let nextMax = Number(maxEl.value);
+      if (!Number.isFinite(nextMin)) nextMin = range.min;
+      if (!Number.isFinite(nextMax)) nextMax = range.max;
+
+      if (nextMax <= nextMin) {
+        const center = Number.isFinite(nextMin) ? nextMin : range.min;
+        nextMin = center;
+        nextMax = center + 1;
+      }
+
+      range.min = Math.max(0.01, nextMin);
+      range.max = Math.max(range.min + 0.01, nextMax);
+      syncScaleControls();
+      render();
     }
 
     function drawPoints(width, height) {
@@ -617,11 +738,34 @@ pointcolor #0f766e</pre>
     });
 
     resetBtn.addEventListener('click', () => {
-      state.scale = 42;
+      state.scaleX = 42;
+      state.scaleY = 42;
+      state.xScaleRange.min = 8;
+      state.xScaleRange.max = 400;
+      state.yScaleRange.min = 8;
+      state.yScaleRange.max = 400;
       state.panX = 0;
       state.panY = 0;
+      syncScaleControls();
       render();
     });
+
+    xScaleSliderEl.addEventListener('input', () => {
+      state.scaleX = clamp(Number(xScaleSliderEl.value), state.xScaleRange.min, state.xScaleRange.max);
+      xScaleSliderEl.value = String(state.scaleX);
+      render();
+    });
+
+    yScaleSliderEl.addEventListener('input', () => {
+      state.scaleY = clamp(Number(yScaleSliderEl.value), state.yScaleRange.min, state.yScaleRange.max);
+      yScaleSliderEl.value = String(state.scaleY);
+      render();
+    });
+
+    xScaleMinEl.addEventListener('change', () => applyScaleRange('x'));
+    xScaleMaxEl.addEventListener('change', () => applyScaleRange('x'));
+    yScaleMinEl.addEventListener('change', () => applyScaleRange('y'));
+    yScaleMaxEl.addEventListener('change', () => applyScaleRange('y'));
 
     canvas.addEventListener('pointerdown', (e) => {
       drag.active = true;
@@ -663,12 +807,14 @@ pointcolor #0f766e</pre>
       const before = screenToWorld(mx, my, rect.width, rect.height);
 
       const factor = e.deltaY < 0 ? 1.1 : 0.9;
-      state.scale = Math.max(8, state.scale * factor);
+      state.scaleX = clamp(state.scaleX * factor, state.xScaleRange.min, state.xScaleRange.max);
+      state.scaleY = clamp(state.scaleY * factor, state.yScaleRange.min, state.yScaleRange.max);
 
-      const sx = rect.width / 2 + state.panX + before.x * state.scale;
-      const sy = rect.height / 2 + state.panY - before.y * state.scale;
+      const sx = rect.width / 2 + state.panX + before.x * state.scaleX;
+      const sy = rect.height / 2 + state.panY - before.y * state.scaleY;
       state.panX += mx - sx;
       state.panY += my - sy;
+      syncScaleControls();
       render();
     }, { passive: false });
 
@@ -676,7 +822,9 @@ pointcolor #0f766e</pre>
 
     window.__chartDebug = {
       getState: () => ({
-        scale: state.scale,
+        scale: state.scaleX,
+        scaleX: state.scaleX,
+        scaleY: state.scaleY,
         panX: state.panX,
         panY: state.panY,
         pointCount: state.points.length,
@@ -686,6 +834,7 @@ pointcolor #0f766e</pre>
       drawFromInput
     };
 
+    syncScaleControls();
     resizeCanvas();
     drawFromInput();
   </script>
